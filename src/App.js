@@ -1,3 +1,4 @@
+// ROADCHART BUILD MARKER: v6-eslint-fix
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Trash2, Printer, Music, ListMusic, X, Save, CornerDownLeft, Music2, Maximize2, Minimize2,
