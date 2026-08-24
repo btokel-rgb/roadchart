@@ -1,4 +1,4 @@
-// ROADCHART BUILD MARKER: v6-eslint-fix
+// ROADCHART BUILD MARKER: v7-time-signature
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Trash2, Printer, Music, ListMusic, X, Save, CornerDownLeft, Music2, Maximize2, Minimize2,
@@ -37,9 +37,16 @@ const emptySong = () => ({
   artist: "",
   bpm: 100,
   groove: "",
+  timeSignature: "4/4",
   sections: [emptySection()],
   rhythms: [],
 });
+
+const parseBeatsPerBar = (ts) => {
+  const n = parseInt(String(ts || "4/4").split("/")[0], 10);
+  return Number.isFinite(n) && n > 0 ? n : 4;
+};
+const TIME_SIG_PRESETS = ["4/4", "3/4", "2/4", "6/8", "9/8", "12/8", "5/4", "7/8"];
 
 // ---------- optional real backend (Supabase) ----------
 // Fill these in with your own project's values (Supabase dashboard -> Project Settings -> API).
@@ -124,6 +131,7 @@ const TRANSLATIONS = {
     songNamePlaceholder: "PARÇA ADI",
     artistPlaceholder: "Sanatçı / kaynak",
     bpmLabel: "BPM",
+    timeSigLabel: "Ölçü Türü",
     grooveLabel: "Groove",
     groovePlaceholder: "örn. half-time shuffle, 16'lık funk, düz 4",
     totalBarsSuffix: "ölçü toplam",
@@ -185,6 +193,7 @@ const TRANSLATIONS = {
     songNamePlaceholder: "SONG TITLE",
     artistPlaceholder: "Artist / source",
     bpmLabel: "BPM",
+    timeSigLabel: "Time Signature",
     grooveLabel: "Groove",
     groovePlaceholder: "e.g. half-time shuffle, 16th funk, straight 4",
     totalBarsSuffix: "bars total",
@@ -430,17 +439,18 @@ function HighlightableField({ html, onChange, className, placeholder, multiline 
   );
 }
 
-function CellRhythm({ rhythm, secBars, onChange, onRemove, t }) {
+function CellRhythm({ rhythm, secBars, beatsPerBar, onChange, onRemove, t }) {
   const hasContent = (rhythm.slots || []).some((s) => s !== "rest");
   const [editing, setEditing] = useState(!hasContent);
   const scale = rhythm.size === "lg" ? 1 : 0.72;
   const barCount = rhythm.barCount || 1;
   const startBar = rhythm.startBar || 1;
+  const bpb = beatsPerBar || 4;
 
-  const setSubdivision = (sub) => onChange({ ...rhythm, subdivision: sub, slots: Array(barCount * 4 * sub).fill("rest") });
+  const setSubdivision = (sub) => onChange({ ...rhythm, subdivision: sub, slots: Array(barCount * bpb * sub).fill("rest") });
   const setBarCount = (bc) => {
     const b = Math.max(1, bc);
-    onChange({ ...rhythm, barCount: b, slots: Array(b * 4 * rhythm.subdivision).fill("rest") });
+    onChange({ ...rhythm, barCount: b, slots: Array(b * bpb * rhythm.subdivision).fill("rest") });
   };
   const setStartBar = (sb) => onChange({ ...rhythm, startBar: Math.max(1, sb) });
   const alignToEnd = () => {
@@ -467,7 +477,7 @@ function CellRhythm({ rhythm, secBars, onChange, onRemove, t }) {
       )}
 
       <div className="cell-rhythm-scroll">
-        <RhythmGrid subdivision={rhythm.subdivision} beats={barCount * 4} slots={rhythm.slots} scale={scale}
+        <RhythmGrid subdivision={rhythm.subdivision} beats={barCount * bpb} beatsPerBar={bpb} slots={rhythm.slots} scale={scale}
           onToggle={(idx, val) => {
             const slots = [...rhythm.slots];
             slots[idx] = val !== undefined ? val : nextRhythmVal(slots[idx]);
@@ -509,7 +519,7 @@ function CellRhythm({ rhythm, secBars, onChange, onRemove, t }) {
 }
 
 // ---------- chart cell ----------
-function SectionCell({ sec, onChange, onDelete, t }) {
+function SectionCell({ sec, beatsPerBar, onChange, onDelete, t }) {
   return (
     <div className="cell">
       <div className="cell-inner">
@@ -528,7 +538,7 @@ function SectionCell({ sec, onChange, onDelete, t }) {
         </div>
 
         {sec.rhythm ? (
-          <CellRhythm rhythm={sec.rhythm} secBars={sec.bars} t={t} onChange={(r) => onChange({ rhythm: r })} onRemove={() => onChange({ rhythm: null })} />
+          <CellRhythm rhythm={sec.rhythm} secBars={sec.bars} beatsPerBar={beatsPerBar} t={t} onChange={(r) => onChange({ rhythm: r })} onRemove={() => onChange({ rhythm: null })} />
         ) : (
           <button className="c-add-rhythm" onClick={() => onChange({ rhythm: emptyRhythmData() })}>
             <Music2 size={10} /> {t("addRhythm")}
@@ -690,7 +700,7 @@ export default function App() {
       const rows = await sbSongs.list(token);
       const mapped = (rows || []).map((r) => ({
         id: r.id, title: r.title || "", artist: r.artist || "", bpm: r.bpm || 100,
-        groove: r.groove || "", sections: r.sections || [], rhythms: r.rhythms || [],
+        groove: r.groove || "", timeSignature: r.time_signature || "4/4", sections: r.sections || [], rhythms: r.rhythms || [],
       }));
       setSongs(mapped);
       setHistory([mapped]);
@@ -721,7 +731,7 @@ export default function App() {
           await Promise.all(next.map((s) =>
             sbSongs.upsert(session.access_token, {
               id: s.id, user_id: session.user.id, title: s.title, artist: s.artist,
-              bpm: Number(s.bpm) || 100, groove: s.groove, sections: s.sections, rhythms: s.rhythms || [],
+              bpm: Number(s.bpm) || 100, groove: s.groove, time_signature: s.timeSignature || "4/4", sections: s.sections, rhythms: s.rhythms || [],
             })
           ));
         } catch (e) { setStorageOk(false); }
@@ -911,6 +921,8 @@ export default function App() {
         .artist-input::placeholder, .title-input::placeholder { color: #a49d89; }
         .readout { font-family: 'JetBrains Mono','Roboto Mono',monospace; background: #1a1712; color: var(--amber);
           border-radius: 4px; padding: 8px 14px; text-align: center; min-width: 88px; }
+        .ts-readout { min-width: 70px; }
+        .ts-readout input { font-size: 20px !important; }
         .readout input { background: transparent; border: none; color: var(--amber); font-family: inherit;
           font-size: 24px; font-weight: 700; width: 100%; text-align: center; }
         .readout input:focus { outline: none; }
@@ -1112,6 +1124,14 @@ export default function App() {
                   <input type="number" value={activeSong.bpm} onChange={(e) => updateSong(activeSong.id, { bpm: e.target.value })} />
                   <div className="lbl">{t("bpmLabel")}</div>
                 </div>
+                <div className="readout ts-readout">
+                  <input type="text" list="ts-presets" value={activeSong.timeSignature || "4/4"}
+                    onChange={(e) => updateSong(activeSong.id, { timeSignature: e.target.value })} />
+                  <datalist id="ts-presets">
+                    {TIME_SIG_PRESETS.map((ts) => <option key={ts} value={ts} />)}
+                  </datalist>
+                  <div className="lbl">{t("timeSigLabel")}</div>
+                </div>
               </div>
 
               <div className="groove-row">
@@ -1144,6 +1164,7 @@ export default function App() {
                           key={sec.id}
                           sec={sec}
                           t={t}
+                          beatsPerBar={parseBeatsPerBar(activeSong.timeSignature)}
                           onChange={(patch) =>
                             setSections(activeSong.id, (arr) => arr.map((x) => (x.id === sec.id ? { ...x, ...patch } : x)))
                           }
@@ -1186,7 +1207,7 @@ export default function App() {
                       </div>
                       <button className="rhythm-del" onClick={() => setRhythms(activeSong.id, (arr) => arr.filter((x) => x.id !== r.id))}><Trash2 size={13} /></button>
                     </div>
-                    <RhythmGrid subdivision={r.subdivision} beats={r.beats} slots={r.slots}
+                    <RhythmGrid subdivision={r.subdivision} beats={r.beats} beatsPerBar={parseBeatsPerBar(activeSong.timeSignature)} slots={r.slots}
                       onToggle={(idx, val) => setRhythms(activeSong.id, (arr) => arr.map((x) => {
                         if (x.id !== r.id) return x;
                         const slots = [...x.slots];
