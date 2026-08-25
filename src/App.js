@@ -1,4 +1,4 @@
-// ROADCHART BUILD MARKER: v14-shared-topbar
+// ROADCHART BUILD MARKER: v15-print-compact
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Trash2, Printer, Music, ListMusic, X, Save, CornerDownLeft, Music2, Maximize2, Minimize2,
@@ -955,9 +955,45 @@ const CHART_STYLES = `
 
         @media print {
           .sidebar, .toolbar, .presets-row, .add-row, .cell-toolbar, .add-rhythm, .hint, .c-add-rhythm, .c-bars-row, .shared-topbar { display: none !important; }
-          .chart-app { background: white; }
-          .main { padding: 0; }
-          .chart-card { box-shadow: none; max-width: 100%; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+          @page { margin: 10mm; }
+          .chart-app { background: white; display: block; }
+          .main { padding: 0; height: auto; min-height: 0; overflow: visible; }
+          .chart-card { box-shadow: none; max-width: 100%; border: 1px solid #1a170f; }
+
+          .chart-header { padding: 10px 14px 8px; gap: 10px; flex-wrap: nowrap; border-bottom-width: 1.5px; }
+          .title-input { font-size: 19px !important; }
+          .artist-input { font-size: 10px !important; }
+          .readout { min-width: 56px; padding: 4px 8px; }
+          .readout input, .readout div { font-size: 15px !important; }
+          .ts-readout { min-width: 44px; }
+          .ts-readout input, .ts-readout div { font-size: 13px !important; }
+          .readout .lbl { font-size: 7px !important; }
+
+          .groove-row { padding: 5px 14px; }
+          .groove-row input, .groove-row div { font-size: 10px !important; }
+          .total { font-size: 9px !important; }
+
+          .staff-grid { padding: 6px 10px 4px; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)) !important; }
+          .cell, .nav-marker, .rhythm-card { break-inside: avoid; page-break-inside: avoid; }
+          .cell { border-left-width: 1.5px; }
+          .cell-inner { padding: 4px 5px 3px; gap: 0; }
+          .c-technique { font-size: 8px !important; padding: 0; margin-bottom: 0; }
+          .c-name { font-size: 12px !important; }
+          .c-bracket { font-size: 9px; margin: 0; }
+          .c-repeat { font-size: 10px !important; }
+          .row-spacer { height: 6px; }
+          .nav-marker { font-size: 9px; padding: 3px 6px; margin: 2px 0; }
+
+          .cell-rhythm { padding: 2px 3px 1px; margin-top: 2px; }
+          .cell-rhythm-range .range-label { font-size: 7px !important; }
+          .range-note-view { font-size: 7px !important; }
+
+          .rhythm-block { padding: 8px 14px 10px; }
+          .rhythm-block h3 { font-size: 10px; margin-bottom: 2px; }
+          .rhythm-block .sub { font-size: 8px; margin-bottom: 4px; }
+          .rhythm-card { padding: 6px 8px; margin-bottom: 6px; }
+          .rhythm-label { font-size: 10px !important; }
         }
       `;
 
