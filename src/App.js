@@ -1,9 +1,21 @@
-// ROADCHART BUILD MARKER: v7-time-signature
+// ROADCHART BUILD MARKER: v14-shared-topbar
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Trash2, Printer, Music, ListMusic, X, Save, CornerDownLeft, Music2, Maximize2, Minimize2,
-  Undo2, Redo2, Download, Upload,
+  Undo2, Redo2, Download, Upload, Menu, Share2, Copy, Check,
 } from "lucide-react";
+
+function RoadchartMark({ size = 20, pinColor = "#f2a33c", noteColor = "#1a170f" }) {
+  return (
+    <svg width={size} height={size * 1.25} viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+      <path d="M16 2C9.4 2 4 7.4 4 14C4 22.8 16 38 16 38C16 38 28 22.8 28 14C28 7.4 22.6 2 16 2Z" fill={pinColor} />
+      <g transform="rotate(-18 15 15)">
+        <rect x="17.1" y="5.5" width="1.7" height="11.5" rx="0.85" fill={noteColor} />
+        <ellipse cx="14" cy="17" rx="3.7" ry="2.8" fill={noteColor} />
+      </g>
+    </svg>
+  );
+}
 
 // ---------- helpers ----------
 const uid = () =>
@@ -14,6 +26,7 @@ const uid = () =>
         return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
       });
 const stripHtml = (html) => (html || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+const secRhythms = (sec) => sec.rhythms || (sec.rhythm ? [sec.rhythm] : []);
 
 const emptySection = (name = "VERSE") => ({
   id: uid(),
@@ -22,12 +35,14 @@ const emptySection = (name = "VERSE") => ({
   technique: "",
   bars: 4,
   repeatLabel: "4x",
-  rhythm: null,
+  rhythms: [],
 });
 
 const emptyBreak = () => ({ id: uid(), type: "break" });
+const emptyNav = (label) => ({ id: uid(), type: "nav", label });
+const NAV_PRESETS = ["D.S. al Coda", "D.C. al Fine", "To Coda", "Coda", "Fine", "D.S."];
 
-const emptyRhythmData = () => ({ startBar: 1, barCount: 1, subdivision: 2, slots: Array(8).fill("rest"), size: "sm", note: "" });
+const emptyRhythmData = () => ({ id: uid(), startBar: 1, barCount: 1, subdivision: 2, slots: Array(8).fill("rest"), size: "sm", note: "" });
 
 const emptyStandaloneRhythm = () => ({ id: uid(), label: "", subdivision: 4, beats: 2, slots: Array(8).fill("rest") });
 
@@ -38,6 +53,7 @@ const emptySong = () => ({
   bpm: 100,
   groove: "",
   timeSignature: "4/4",
+  isPublic: false,
   sections: [emptySection()],
   rhythms: [],
 });
@@ -105,6 +121,7 @@ const sbSongs = {
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     }),
   remove: (token, id) => sbFetch(`/rest/v1/songs?id=eq.${id}`, { method: "DELETE", token }),
+  getPublic: (id) => sbFetch(`/rest/v1/songs?id=eq.${id}&is_public=eq.true&select=*`),
 };
 
 const SECTION_PRESETS = [
@@ -147,7 +164,7 @@ const TRANSLATIONS = {
     rhythmLabelPlaceholder: "örn. FİN SENKOP",
     quarter: "4'lük", eighth: "8'lik", sixteenth: "16'lık",
     beatsSuffix: "vuruş",
-    rhythmHint: "Bir vuruşa tıkla: es → nota → bağ (senkop) → es",
+    rhythmHint: "Bir vuruşa tıkla: es → nota → aksan (>) → ghost note (parantez) → bağ (senkop) → es",
     addRhythm2: "Ritim Ekle",
     barLabel: "ÖLÇÜ",
     alignToEnd: "sona hizala",
@@ -168,6 +185,14 @@ const TRANSLATIONS = {
     importError: "Dosya okunamadı. Geçerli bir yedek dosyası olduğundan emin ol.",
     undoTooltip: "Geri al",
     redoTooltip: "Yinele",
+    shareBtn: "Paylaş",
+    shareOnLabel: "Herkese açık — link'e sahip olan görebilir",
+    shareOffLabel: "Kapalı — sadece sen görüyorsun",
+    shareCopy: "Kopyala",
+    shareCopied: "Kopyalandı!",
+    shareNotFound: "Bu parça bulunamadı ya da artık paylaşılmıyor.",
+    sharedBadge: "👁 Salt okunur, paylaşılmış görünüm",
+    shareTryIt: "Kendi chart'ını oluştur",
     authEmail: "E-posta",
     authPassword: "Şifre",
     authSignIn: "Giriş Yap",
@@ -209,7 +234,7 @@ const TRANSLATIONS = {
     rhythmLabelPlaceholder: "e.g. ENDING SYNCOPATION",
     quarter: "quarter", eighth: "eighth", sixteenth: "16th",
     beatsSuffix: "beats",
-    rhythmHint: "Tap a beat to cycle: rest → note → tie (syncopation) → rest",
+    rhythmHint: "Tap a beat to cycle: rest → note → accent (>) → ghost note (parens) → tie (syncopation) → rest",
     addRhythm2: "Add Rhythm",
     barLabel: "BAR",
     alignToEnd: "align to end",
@@ -230,6 +255,14 @@ const TRANSLATIONS = {
     importError: "Couldn't read the file. Make sure it's a valid backup file.",
     undoTooltip: "Undo",
     redoTooltip: "Redo",
+    shareBtn: "Share",
+    shareOnLabel: "Public — anyone with the link can view",
+    shareOffLabel: "Private — only you can see it",
+    shareCopy: "Copy",
+    shareCopied: "Copied!",
+    shareNotFound: "This song wasn't found, or isn't shared anymore.",
+    sharedBadge: "👁 Read-only shared view",
+    shareTryIt: "Make your own chart",
     authEmail: "Email",
     authPassword: "Password",
     authSignIn: "Sign In",
@@ -261,6 +294,11 @@ function buildGrid(sections) {
       }
       return;
     }
+    if (sec.type === "nav") {
+      current = null;
+      rows.push({ type: "nav", id: sec.id, label: sec.label });
+      return;
+    }
     const name = stripHtml(sec.name).toUpperCase() || "?";
     if (!(name in colIndex)) {
       colIndex[name] = columns.length;
@@ -290,7 +328,7 @@ function buildGrid(sections) {
   return { columns, rows };
 }
 
-const RHYTHM_ORDER = ["rest", "hit", "tie"];
+const RHYTHM_ORDER = ["rest", "hit", "accent", "ghost", "tie"];
 const nextRhythmVal = (v) => RHYTHM_ORDER[(RHYTHM_ORDER.indexOf(v) + 1) % RHYTHM_ORDER.length];
 
 // ---------- rhythm grid SVG (scalable, click-and-drag to paint) ----------
@@ -335,7 +373,7 @@ function RhythmGrid({ subdivision, beats, slots, onToggle, scale = 1, beatsPerBa
     let runStart = null;
     const runs = [];
     group.forEach((s, i) => {
-      const active = s === "hit" || s === "tie";
+      const active = s === "hit" || s === "tie" || s === "accent" || s === "ghost";
       if (active && runStart === null) runStart = i;
       if (!active && runStart !== null) { runs.push([runStart, i - 1]); runStart = null; }
     });
@@ -357,11 +395,22 @@ function RhythmGrid({ subdivision, beats, slots, onToggle, scale = 1, beatsPerBa
     group.forEach((s, i) => {
       const x = xs[i];
       const idx = gi * subdivision + i;
-      if (s === "hit" || s === "tie") {
+      if (s === "hit" || s === "tie" || s === "accent" || s === "ghost") {
+        const rx = s === "ghost" ? 5 * scale : 6 * scale;
+        const ry = s === "ghost" ? 3.8 * scale : 4.6 * scale;
         elements.push(
           <g key={`n-${idx}`}>
             <line x1={x} y1={noteY - 2} x2={x} y2={beamTopBase} stroke="#1a170f" strokeWidth={2 * scale} />
-            <ellipse cx={x} cy={noteY} rx={6 * scale} ry={4.6 * scale} fill="#1a170f" />
+            <ellipse cx={x} cy={noteY} rx={rx} ry={ry} fill="#1a170f" />
+            {s === "ghost" && (
+              <>
+                <text x={x - rx - 5 * scale} y={noteY + 4 * scale} fontSize={13 * scale} fontWeight="700" fill="#1a170f" textAnchor="middle">(</text>
+                <text x={x + rx + 5 * scale} y={noteY + 4 * scale} fontSize={13 * scale} fontWeight="700" fill="#1a170f" textAnchor="middle">)</text>
+              </>
+            )}
+            {s === "accent" && (
+              <text x={x} y={beamTopBase - 3 * scale} fontSize={13 * scale} fontWeight="900" fill="#1a170f" textAnchor="middle">&gt;</text>
+            )}
             {s === "tie" && i > 0 && (
               <path d={`M ${xs[i - 1] + 5 * scale} ${noteY + 8 * scale} Q ${(xs[i - 1] + x) / 2} ${noteY + 14 * scale} ${x - 5 * scale} ${noteY + 8 * scale}`}
                 fill="none" stroke="#8a5c1e" strokeWidth={1.5 * scale} />
@@ -537,13 +586,22 @@ function SectionCell({ sec, beatsPerBar, onChange, onDelete, t }) {
           <span>{t("barsLabel")}</span>
         </div>
 
-        {sec.rhythm ? (
-          <CellRhythm rhythm={sec.rhythm} secBars={sec.bars} beatsPerBar={beatsPerBar} t={t} onChange={(r) => onChange({ rhythm: r })} onRemove={() => onChange({ rhythm: null })} />
-        ) : (
-          <button className="c-add-rhythm" onClick={() => onChange({ rhythm: emptyRhythmData() })}>
-            <Music2 size={10} /> {t("addRhythm")}
-          </button>
-        )}
+        {secRhythms(sec).map((rh, ri) => (
+          <CellRhythm key={rh.id || ri} rhythm={rh} secBars={sec.bars} beatsPerBar={beatsPerBar} t={t}
+            onChange={(r) => {
+              const next = [...secRhythms(sec)];
+              next[ri] = r;
+              onChange({ rhythms: next, rhythm: undefined });
+            }}
+            onRemove={() => {
+              const next = secRhythms(sec).filter((_, i) => i !== ri);
+              onChange({ rhythms: next, rhythm: undefined });
+            }}
+          />
+        ))}
+        <button className="c-add-rhythm" onClick={() => onChange({ rhythms: [...secRhythms(sec), emptyRhythmData()], rhythm: undefined })}>
+          <Music2 size={10} /> {t("addRhythm")}
+        </button>
       </div>
 
       <div className="cell-toolbar">
@@ -630,7 +688,7 @@ function AuthScreen({ t, onAuthed }) {
         .auth-note { font-size: 10px; color: #8a8267; margin: 4px 0 0; line-height: 1.4; }
       `}</style>
       <form className="auth-card" onSubmit={submit}>
-        <div className="auth-brand"><Music size={20} color="#f2a33c" /> {t("brand")}</div>
+        <div className="auth-brand"><RoadchartMark size={22} /> {t("brand")}</div>
         <input type="text" autoComplete="username" placeholder={t("authEmail")} value={email} onChange={(e) => setEmail(e.target.value)} />
         <input type="text" autoComplete="current-password" placeholder={t("authPassword")} value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <div className="auth-error">{error}</div>}
@@ -648,12 +706,398 @@ function AuthScreen({ t, onAuthed }) {
 }
 
 
-export default function App() {
+const CHART_STYLES = `
+        .chart-app {
+          --ink: #efece4; --ink-dim: #a7a49a; --stage: #14130f; --stage-2: #1c1a15;
+          --paper: #f2ede2; --paper-line: #d8d0bd; --amber: #f2a33c; --amber-dim: #8a5c1e; --red: #d15a4a;
+          font-family: 'Inter', system-ui, sans-serif; background: var(--stage); color: var(--ink);
+          min-height: 100vh; display: flex; font-size: 14px;
+        }
+        .chart-app * { box-sizing: border-box; }
+        .mono { font-family: 'JetBrains Mono', 'Roboto Mono', monospace; }
+
+        .sidebar { width: 240px; flex-shrink: 0; background: var(--stage-2); border-right: 1px solid #2a271f;
+          display: flex; flex-direction: column; height: 100vh; position: sticky; top: 0; }
+        .sidebar-close { display: none; }
+        .mobile-menu-btn { display: none; }
+        .shared-topbar { display: flex; align-items: center; gap: 8px; max-width: 980px; margin: 0 auto 14px;
+          padding: 4px 2px; }
+        .shared-topbar .brand { font-family: 'Oswald','Arial Narrow',sans-serif; text-transform: uppercase;
+          letter-spacing: 0.08em; font-weight: 600; font-size: 15px; color: var(--amber); flex: 1; }
+        .shared-cta { font-size: 12px; font-weight: 700; color: var(--ink-dim); text-decoration: none;
+          border: 1px solid #3a362c; border-radius: 3px; padding: 6px 12px; transition: all 0.15s; }
+        .shared-cta:hover { color: var(--amber); border-color: var(--amber); }
+        .sidebar-backdrop { display: none; }
+
+        @media (max-width: 760px) {
+          .chart-app { display: block; }
+          .sidebar { position: fixed; top: 0; left: 0; height: 100dvh; width: 82vw; max-width: 320px;
+            z-index: 40; transform: translateX(-100%); transition: transform 0.22s ease; box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
+          .sidebar.open { transform: translateX(0); }
+          .sidebar-close { display: flex; align-items: center; justify-content: center; background: none; border: none;
+            color: var(--ink-dim); width: 32px; height: 32px; margin-left: auto; }
+          .sidebar-backdrop.show { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 39; }
+          .mobile-menu-btn { display: flex; align-items: center; gap: 8px; width: 100%; background: var(--stage-2);
+            border: none; border-bottom: 1px solid #2a271f; color: var(--ink); padding: 14px 16px; font-size: 14px;
+            font-weight: 700; position: sticky; top: 0; z-index: 10; text-align: left; }
+          .main { padding: 0 12px 60px; height: auto; min-height: 100vh; overflow-y: visible; }
+          .toolbar { flex-wrap: wrap; gap: 8px; padding: 10px 2px; }
+          .chart-header { flex-direction: column; align-items: stretch; gap: 12px; }
+          .readout, .ts-readout { min-width: 0; }
+          .groove-row { flex-wrap: wrap; }
+          .staff-grid { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          .cell { min-width: 132px; }
+          /* bigger touch targets */
+          .icon-btn, .print-btn, .footer-btn, .new-btn, .preset-chip, .cell-del, .swatch, .rhythm-done,
+          .c-add-rhythm, .add-section, .add-rhythm { min-height: 34px; }
+          .swatch { width: 18px; height: 18px; }
+          .cell-toolbar { opacity: 1; }
+        }
+        .sidebar-head { padding: 18px 16px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #2a271f; }
+        .sidebar-head .brand { font-family: 'Oswald','Arial Narrow',sans-serif; text-transform: uppercase;
+          letter-spacing: 0.08em; font-weight: 600; font-size: 15px; color: var(--amber); flex: 1; }
+        .lang-switch { display: flex; border: 1px solid #3a362c; border-radius: 3px; overflow: hidden; }
+        .lang-switch button { background: transparent; border: none; color: var(--ink-dim); font-size: 10px;
+          font-weight: 700; padding: 3px 6px; cursor: pointer; }
+        .lang-switch button.on { background: var(--amber); color: #1a1408; }
+        .new-btn { margin: 12px 14px; background: var(--amber); color: #1a1408; border: none; border-radius: 3px;
+          padding: 9px 10px; font-weight: 700; font-size: 12.5px; letter-spacing: 0.04em; text-transform: uppercase;
+          display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+        .new-btn:hover { background: #ffb75c; }
+        .song-list { overflow-y: auto; flex: 1; padding: 4px 8px 16px; }
+        .song-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 9px 10px;
+          border-radius: 3px; cursor: pointer; color: var(--ink-dim); margin-bottom: 2px; }
+        .song-item:hover { background: #24211a; color: var(--ink); }
+        .song-item.active { background: #2a2419; color: var(--ink); box-shadow: inset 2px 0 0 var(--amber); }
+        .song-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+        .song-item .del { opacity: 0; background: none; border: none; color: var(--ink-dim); cursor: pointer; padding: 2px; }
+        .song-item:hover .del { opacity: 1; }
+        .song-item .del:hover { color: var(--red); }
+        .empty-list { padding: 24px 14px; color: var(--ink-dim); font-size: 12.5px; line-height: 1.5; }
+        .sidebar-footer { padding: 10px; border-top: 1px solid #2a271f; display: flex; gap: 6px; }
+        .footer-btn { flex: 1; background: transparent; border: 1px solid #3a362c; color: var(--ink-dim); border-radius: 3px;
+          padding: 7px 4px; font-size: 10.5px; font-weight: 700; cursor: pointer; display: flex; align-items: center;
+          justify-content: center; gap: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+        .footer-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+        .main { flex: 1; padding: 32px 40px 90px; overflow-y: auto; height: 100vh; }
+        .no-song { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 70vh;
+          color: var(--ink-dim); gap: 10px; }
+        .no-song svg { opacity: 0.4; }
+
+        .chart-card { background: var(--paper); color: #1a170f; max-width: 980px; margin: 0 auto; border-radius: 4px;
+          box-shadow: 0 20px 50px rgba(0,0,0,0.45); overflow: hidden; }
+        .chart-header { padding: 22px 26px 18px; border-bottom: 2.5px solid #1a170f; display: flex;
+          justify-content: space-between; align-items: flex-end; gap: 20px; }
+        .title-input { font-family: 'Oswald','Arial Narrow',sans-serif; font-size: 28px; font-weight: 700;
+          text-transform: uppercase; background: transparent; border: none; width: 100%; color: #1a170f; }
+        .title-input:focus { outline: none; border-bottom: 1px dashed #1a170f; }
+        .artist-input { background: transparent; border: none; font-size: 13px; color: #5c5745; margin-top: 2px; width: 100%; }
+        .artist-input:focus { outline: none; border-bottom: 1px dashed #999; }
+        .artist-input::placeholder, .title-input::placeholder { color: #a49d89; }
+        .readout { font-family: 'JetBrains Mono','Roboto Mono',monospace; background: #1a1712; color: var(--amber);
+          border-radius: 4px; padding: 8px 14px; text-align: center; min-width: 88px; }
+        .ts-readout { min-width: 70px; }
+        .ts-readout input { font-size: 20px !important; }
+        .readout input { background: transparent; border: none; color: var(--amber); font-family: inherit;
+          font-size: 24px; font-weight: 700; width: 100%; text-align: center; }
+        .readout input:focus { outline: none; }
+        .readout .lbl { font-size: 9px; letter-spacing: 0.15em; color: #d69a4e; margin-top: 2px; text-transform: uppercase; }
+
+        .groove-row { padding: 10px 26px; border-bottom: 1px solid var(--paper-line); display: flex; align-items: center;
+          gap: 10px; background: #ebe4d3; }
+        .groove-row label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #6b6555; font-weight: 800; }
+        .groove-row input { background: transparent; border: none; font-size: 13.5px; font-style: italic; color: #221f19;
+          flex: 1; font-weight: 700; }
+        .groove-row input:focus { outline: none; }
+        .groove-row .total { font-family: 'JetBrains Mono',monospace; font-size: 11.5px; color: #6b6555; white-space: nowrap; }
+
+        .presets-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 26px 4px; }
+        .preset-chip { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid var(--paper-line);
+          background: transparent; color: #4a4636; padding: 4px 9px; border-radius: 20px; cursor: pointer; font-weight: 700; }
+        .preset-chip:hover { background: #1a170f; color: var(--paper); border-color: #1a170f; }
+        .break-chip { border-color: var(--amber-dim); color: var(--amber-dim); }
+        .nav-chip { border-color: #6b5a8a; color: #6b5a8a; }
+        .nav-marker { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 8px;
+          background: #ece4f5; border: 1px dashed #6b5a8a; border-radius: 4px; color: #4a3a68; font-weight: 800;
+          font-family: 'Oswald','Arial Narrow',sans-serif; text-transform: uppercase; letter-spacing: 0.06em;
+          font-size: 13px; padding: 8px 10px; margin: 4px 0; }
+        .nav-marker-del { background: none; border: none; color: #8a7aa8; cursor: pointer; padding: 2px; }
+        .nav-marker-del:hover { color: var(--red); }
+
+        .hint { padding: 4px 26px 0; font-size: 11px; color: #8a8267; }
+
+        /* grid staff */
+        .staff-grid { display: grid; gap: 0; padding: 18px 22px 8px; overflow-x: auto; }
+        .row-spacer { grid-column: 1 / -1; height: 16px; position: relative; }
+        .row-spacer::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1.5px dashed #c9c2ac; }
+
+        .cell { border-left: 2.5px solid #1a170f; position: relative; display: flex; flex-direction: column; min-width: 0; }
+        .cell.empty-cell { border-left: 1px dashed #d8d0bd; }
+        .cell:nth-last-child(-n+50) { }
+        .cell-inner { padding: 10px 10px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; min-width: 0; width: 100%; }
+        .c-technique { text-align: center; font-size: 11px; font-style: italic; font-weight: 700; color: #3a3629;
+          background: rgba(26,23,15,0.06); border-radius: 3px; width: 92%; padding: 1px 0; margin-bottom: 1px; cursor: text;
+          min-height: 1.2em; }
+        .c-technique:focus { outline: none; background: rgba(26,23,15,0.1); }
+        .c-technique:empty:before { content: attr(data-placeholder); color: #a49d89; font-weight: 600; font-style: italic; }
+        .c-name { text-align: center; font-family: 'Oswald','Arial Narrow',sans-serif; font-weight: 800; font-size: 16.5px;
+          text-transform: uppercase; width: 100%; color: #1a170f; letter-spacing: 0.01em; cursor: text; min-height: 1.2em; }
+        .c-name:focus { outline: none; }
+        .c-name:empty:before { content: attr(data-placeholder); color: #a49d89; font-weight: 700; }
+        .c-bracket { text-align: center; color: #6b6555; font-size: 13px; line-height: 0.5; margin: 2px 0; }
+        .c-repeat-wrap { position: relative; width: 100%; }
+        .c-repeat { position: relative; z-index: 1; text-align: center; font-family: 'JetBrains Mono',monospace;
+          font-size: 13.5px; width: 100%; color: #1a170f; font-weight: 800; white-space: pre-wrap; word-break: break-word;
+          min-height: 1.3em; cursor: text; }
+        .c-repeat:focus, .range-note:focus { outline: none; }
+        .c-repeat:empty:before, .range-note:empty:before { content: attr(data-placeholder); color: #a49d89; font-weight: 600; }
+        .c-bars-row { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; }
+        .c-bars { width: 30px; font-family: 'JetBrains Mono',monospace; font-size: 10.5px; text-align: center;
+          background: #f7f2e6; border: 1px solid var(--paper-line); border-radius: 2px; color: #6b6555; }
+        .c-bars-row span { font-size: 9px; color: #8a8267; text-transform: uppercase; }
+
+        .c-add-rhythm { margin-top: 6px; background: transparent; border: 1px dashed var(--paper-line); color: #8a8267;
+          font-size: 9.5px; text-transform: uppercase; font-weight: 700; border-radius: 3px; padding: 3px 7px; cursor: pointer;
+          display: flex; align-items: center; gap: 3px; }
+        .c-add-rhythm:hover { border-color: #1a170f; color: #1a170f; }
+        .cell-rhythm { margin-top: 6px; background: #ece5d4; border: 1px solid var(--paper-line); border-radius: 3px;
+          padding: 3px 4px 2px; width: 100%; max-width: 100%; min-width: 0; }
+        .cell-rhythm-range { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 2px; }
+        .range-label { font-family: 'JetBrains Mono',monospace; font-size: 9px; font-weight: 800; color: var(--amber-dim);
+          background: rgba(138,92,30,0.12); border-radius: 2px; padding: 1px 4px; white-space: nowrap; }
+        .range-align { font-size: 8px; text-transform: uppercase; font-weight: 700; color: #8a8267; background: none;
+          border: none; cursor: pointer; text-decoration: underline; padding: 0; white-space: nowrap; }
+        .range-align:hover { color: #1a170f; }
+        .range-note { width: 100%; margin-top: 3px; font-size: 9.5px; font-style: italic; color: #4a4636;
+          border-top: 1px dashed var(--paper-line); padding-top: 2px; cursor: text; min-height: 1.2em; }
+        .range-note-view { width: 100%; margin-top: 3px; font-size: 9.5px; font-style: italic; color: #4a4636;
+          border-top: 1px dashed var(--paper-line); padding-top: 2px; }
+        .rhythm-done { font-size: 8px; text-transform: uppercase; font-weight: 700; color: #8a8267; background: none;
+          border: none; cursor: pointer; text-decoration: underline; padding: 0; white-space: nowrap; }
+        .rhythm-done:hover { color: #1a170f; }
+        .cell-rhythm-note-picker { display: flex; gap: 2px; margin-bottom: 2px; min-width: 0; }
+        .cell-rhythm-note-picker button { flex: 1; font-size: 8px; padding: 1px 0; border: 1px solid var(--paper-line);
+          background: transparent; color: #8a8267; border-radius: 2px; cursor: pointer; font-weight: 700; min-width: 0; }
+        .cell-rhythm-note-picker button.on { background: var(--amber-dim); color: #fff2dc; border-color: var(--amber-dim); }
+        .cell-rhythm-scroll { overflow-x: auto; width: 100%; max-width: 100%; min-width: 0; }
+        .cell-rhythm-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 8px; margin-top: 3px; }
+        .cell-rhythm-bar-right { display: flex; gap: 4px; margin-left: auto; }
+        .cell-rhythm-bar button { background: none; border: none; color: #a49d89; cursor: pointer; padding: 1px; }
+        .cell-rhythm-bar button:hover { color: #1a170f; }
+        .cell-beat-stepper { display: flex; align-items: center; gap: 3px; font-size: 8px; color: #8a8267; font-weight: 700;
+          text-transform: uppercase; }
+        .cell-beat-stepper b { font-size: 10px; color: #4a4636; min-width: 9px; text-align: center; }
+        .cell-beat-stepper button { width: 13px; height: 13px; line-height: 11px; border: 1px solid var(--paper-line);
+          background: transparent; border-radius: 2px; cursor: pointer; font-size: 10px; padding: 0; color: #6b6555; }
+        .cell-beat-stepper button:hover { border-color: #1a170f; color: #1a170f; }
+
+        .cell-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 6px;
+          opacity: 0; transition: opacity 0.1s; border-top: 1px solid #e4dcc7; margin-top: auto; }
+        .cell:hover .cell-toolbar { opacity: 1; }
+        .swatches { display: flex; gap: 3px; align-items: center; }
+        .swatch { width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.25); cursor: pointer; padding: 0; }
+        .swatch.eraser { width: 12px; height: 12px; border-radius: 50%; background: #fff; display: flex; align-items: center;
+          justify-content: center; color: #a49d89; border: 1px solid var(--paper-line); }
+        .swatch.eraser:hover { color: var(--red); border-color: var(--red); }
+        .cell-del { background: none; border: none; cursor: pointer; color: #a49d89; padding: 2px; }
+        .cell-del:hover { color: var(--red); }
+
+        .add-row { display: flex; gap: 8px; padding: 8px 26px 20px; }
+        .add-section { border: 1.5px dashed var(--paper-line); background: transparent; color: #4a4636; padding: 8px 12px;
+          border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
+        .add-section:hover { border-color: #1a170f; color: #1a170f; }
+
+        .rhythm-block { border-top: 2.5px solid #1a170f; padding: 16px 26px 22px; background: #ece5d4; }
+        .rhythm-block h3 { font-family: 'Oswald','Arial Narrow',sans-serif; text-transform: uppercase; font-size: 13px;
+          letter-spacing: 0.08em; color: #4a4636; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; font-weight: 800; }
+        .rhythm-block .sub { font-size: 11px; color: #8a8267; margin: 0 0 10px; }
+        .rhythm-card { background: var(--paper); border: 1px solid var(--paper-line); border-radius: 4px; padding: 10px 14px; margin-bottom: 10px; }
+        .rhythm-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+        .rhythm-label { flex: 1; min-width: 120px; background: transparent; border: none; border-bottom: 1px dashed transparent;
+          font-weight: 800; font-size: 12.5px; text-transform: uppercase; color: #1a170f; }
+        .rhythm-label:focus { outline: none; border-bottom-color: #999; }
+        .rhythm-label::placeholder { color: #b3ac98; }
+        .seg-toggle { display: flex; border: 1px solid var(--paper-line); border-radius: 3px; overflow: hidden; }
+        .seg-toggle button { background: transparent; border: none; padding: 3px 8px; font-size: 10.5px; cursor: pointer; color: #6b6555; font-weight: 700; }
+        .seg-toggle button.on { background: var(--amber-dim); color: #fff2dc; }
+        .beat-stepper { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #6b6555; }
+        .beat-stepper button { width: 18px; height: 18px; border: 1px solid var(--paper-line); background: transparent; border-radius: 2px; cursor: pointer; }
+        .rhythm-del { background: none; border: none; color: #a49d89; cursor: pointer; }
+        .rhythm-del:hover { color: var(--red); }
+        .rhythm-hint { font-size: 10px; color: #a49d89; margin-top: 2px; }
+        .add-rhythm { border: 1.5px dashed var(--paper-line); background: transparent; color: #4a4636; padding: 8px 12px;
+          border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
+        .add-rhythm:hover { border-color: #1a170f; color: #1a170f; }
+
+        .toolbar { max-width: 980px; margin: 0 auto 14px; display: flex; justify-content: space-between; align-items: center; }
+        .toolbar .status { font-size: 11.5px; color: var(--ink-dim); display: flex; align-items: center; gap: 6px; }
+        .toolbar-right { display: flex; align-items: center; gap: 8px; }
+        .share-panel { max-width: 980px; margin: -6px auto 14px; background: var(--stage-2); border: 1px solid #3a362c;
+          border-radius: 4px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+        .share-toggle { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+        .share-toggle input { width: 16px; height: 16px; }
+        .share-link-row { display: flex; gap: 8px; }
+        .share-link-input { flex: 1; background: #0f0e0a; border: 1px solid #3a362c; color: var(--amber);
+          font-family: 'JetBrains Mono', monospace; font-size: 11.5px; border-radius: 3px; padding: 7px 10px; }
+        .share-copy-btn { background: var(--amber); color: #1a1408; border: none; border-radius: 3px; padding: 7px 12px;
+          font-size: 11.5px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+        .share-copy-btn:hover { background: #ffb75c; }
+        .icon-btn { background: transparent; border: 1px solid #3a362c; color: var(--ink); width: 32px; height: 32px;
+          border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .icon-btn:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+        .icon-btn:disabled { opacity: 0.3; cursor: default; }
+        .print-btn { background: transparent; border: 1px solid #3a362c; color: var(--ink); padding: 8px 14px;
+          border-radius: 3px; cursor: pointer; font-size: 12.5px; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+        .print-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+        @media print {
+          .sidebar, .toolbar, .presets-row, .add-row, .cell-toolbar, .add-rhythm, .hint, .c-add-rhythm, .c-bars-row, .shared-topbar { display: none !important; }
+          .chart-app { background: white; }
+          .main { padding: 0; }
+          .chart-card { box-shadow: none; max-width: 100%; }
+        }
+      `;
+
+function ReadOnlySectionCell({ sec, beatsPerBar }) {
+  return (
+    <div className="cell">
+      <div className="cell-inner">
+        <div className="c-technique" dangerouslySetInnerHTML={{ __html: sec.technique || "" }} />
+        <div className="c-name" dangerouslySetInnerHTML={{ __html: sec.name || "" }} />
+        <div className="c-bracket">⌣</div>
+        <div className="c-repeat-wrap">
+          <div className="c-repeat" dangerouslySetInnerHTML={{ __html: sec.repeatLabel || "" }} />
+        </div>
+        {secRhythms(sec).map((rh, ri) => (
+          <div className="cell-rhythm" key={rh.id || ri}>
+            <div className="cell-rhythm-range">
+              <span className="range-label">
+                ÖLÇÜ {rh.startBar || 1}
+                {(rh.barCount || 1) > 1 ? `–${(rh.startBar || 1) + (rh.barCount || 1) - 1}` : ""}
+              </span>
+            </div>
+            <div className="cell-rhythm-scroll">
+              <RhythmGrid subdivision={rh.subdivision} beats={(rh.barCount || 1) * (beatsPerBar || 4)}
+                beatsPerBar={beatsPerBar || 4} slots={rh.slots} scale={rh.size === "lg" ? 1 : 0.72} onToggle={() => {}} />
+            </div>
+            {rh.note && <div className="range-note-view" dangerouslySetInnerHTML={{ __html: rh.note }} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SharedView({ shareId, t }) {
+  const [song, setSong] = useState(null);
+  const [status, setStatus] = useState("loading");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const rows = await sbSongs.getPublic(shareId);
+        if (rows && rows.length) {
+          const r = rows[0];
+          setSong({
+            title: r.title || "", artist: r.artist || "", bpm: r.bpm || 100,
+            groove: r.groove || "", timeSignature: r.time_signature || "4/4",
+            sections: r.sections || [], rhythms: r.rhythms || [],
+          });
+          setStatus("ready");
+        } else setStatus("notfound");
+      } catch (e) { setStatus("error"); }
+    })();
+  }, [shareId]);
+
+  if (status !== "ready") {
+    return (
+      <div className="chart-app">
+        <style>{CHART_STYLES}</style>
+        <main className="main">
+          <div className="shared-topbar">
+            <RoadchartMark size={20} /><span className="brand">{t("brand")}</span>
+          </div>
+          <div className="no-song">
+            <RoadchartMark size={44} pinColor="#a7a49a" noteColor="#14130f" />
+            <div>{status === "loading" ? "…" : status === "notfound" ? t("shareNotFound") : t("authError")}</div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const grid = buildGrid(song.sections);
+  const bpb = parseBeatsPerBar(song.timeSignature);
+  const totalBarsVal = song.sections.filter((s) => s.type === "section").reduce((a, s) => a + (Number(s.bars) || 0), 0);
+
+  return (
+    <div className="chart-app">
+      <style>{CHART_STYLES}</style>
+      <main className="main">
+        <div className="shared-topbar">
+          <RoadchartMark size={20} /><span className="brand">{t("brand")}</span>
+          <a className="shared-cta" href={window.location.origin + window.location.pathname}>{t("shareTryIt")} →</a>
+        </div>
+        <div className="toolbar">
+          <div className="status"><Share2 size={13} color="#f2a33c" /> {t("sharedBadge")}</div>
+          <button className="print-btn" onClick={() => window.print()}><Printer size={14} /> {t("printPdf")}</button>
+        </div>
+        <div className="chart-card">
+          <div className="chart-header">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="title-input">{song.title || t("untitledSong")}</div>
+              <div className="artist-input">{song.artist}</div>
+            </div>
+            <div className="readout"><div style={{ fontSize: 24, fontWeight: 700 }}>{song.bpm}</div><div className="lbl">{t("bpmLabel")}</div></div>
+            <div className="readout ts-readout"><div style={{ fontSize: 20, fontWeight: 700 }}>{song.timeSignature}</div><div className="lbl">{t("timeSigLabel")}</div></div>
+          </div>
+          <div className="groove-row">
+            <label>{t("grooveLabel")}</label>
+            <div style={{ flex: 1, fontStyle: "italic", fontWeight: 600 }}>{song.groove}</div>
+            <div className="total mono">{totalBarsVal} {t("totalBarsSuffix")}</div>
+          </div>
+          <div className="staff-grid" style={{ gridTemplateColumns: `repeat(${Math.max(grid.columns.length, 1)}, minmax(120px, 1fr))` }}>
+            {grid.rows.map((row, ri) =>
+              row.type === "spacer" ? (
+                <div className="row-spacer" key={row.id} />
+              ) : row.type === "nav" ? (
+                <div className="nav-marker" key={row.id}>{row.label}</div>
+              ) : (
+                row.cells.map((sec, ci) =>
+                  sec ? <ReadOnlySectionCell key={sec.id} sec={sec} beatsPerBar={bpb} /> : <div className="cell empty-cell" key={`e-${ri}-${ci}`} />
+                )
+              )
+            )}
+          </div>
+          {(song.rhythms || []).length > 0 && (
+            <div className="rhythm-block">
+              <h3><Music2 size={13} /> {t("generalRhythmHeading")}</h3>
+              {song.rhythms.map((r) => (
+                <div className="rhythm-card" key={r.id}>
+                  {r.label && <div className="rhythm-label" style={{ marginBottom: 6 }}>{r.label}</div>}
+                  <RhythmGrid subdivision={r.subdivision} beats={r.beats} beatsPerBar={bpb} slots={r.slots} onToggle={() => {}} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function App() {
   const [songs, setSongs] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [storageOk, setStorageOk] = useState(true);
   const [lang, setLang] = useState("tr");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [session, setSession] = useState(null); // { access_token, user } — only used when BACKEND_ON
@@ -700,7 +1144,7 @@ export default function App() {
       const rows = await sbSongs.list(token);
       const mapped = (rows || []).map((r) => ({
         id: r.id, title: r.title || "", artist: r.artist || "", bpm: r.bpm || 100,
-        groove: r.groove || "", timeSignature: r.time_signature || "4/4", sections: r.sections || [], rhythms: r.rhythms || [],
+        groove: r.groove || "", timeSignature: r.time_signature || "4/4", isPublic: !!r.is_public, sections: r.sections || [], rhythms: r.rhythms || [],
       }));
       setSongs(mapped);
       setHistory([mapped]);
@@ -731,7 +1175,7 @@ export default function App() {
           await Promise.all(next.map((s) =>
             sbSongs.upsert(session.access_token, {
               id: s.id, user_id: session.user.id, title: s.title, artist: s.artist,
-              bpm: Number(s.bpm) || 100, groove: s.groove, time_signature: s.timeSignature || "4/4", sections: s.sections, rhythms: s.rhythms || [],
+              bpm: Number(s.bpm) || 100, groove: s.groove, time_signature: s.timeSignature || "4/4", is_public: !!s.isPublic, sections: s.sections, rhythms: s.rhythms || [],
             })
           ));
         } catch (e) { setStorageOk(false); }
@@ -865,222 +1309,24 @@ export default function App() {
 
   return (
     <div className="chart-app">
-      <style>{`
-        .chart-app {
-          --ink: #efece4; --ink-dim: #a7a49a; --stage: #14130f; --stage-2: #1c1a15;
-          --paper: #f2ede2; --paper-line: #d8d0bd; --amber: #f2a33c; --amber-dim: #8a5c1e; --red: #d15a4a;
-          font-family: 'Inter', system-ui, sans-serif; background: var(--stage); color: var(--ink);
-          min-height: 100vh; display: flex; font-size: 14px;
-        }
-        .chart-app * { box-sizing: border-box; }
-        .mono { font-family: 'JetBrains Mono', 'Roboto Mono', monospace; }
+      <style>{CHART_STYLES}</style>
 
-        .sidebar { width: 240px; flex-shrink: 0; background: var(--stage-2); border-right: 1px solid #2a271f;
-          display: flex; flex-direction: column; height: 100vh; position: sticky; top: 0; }
-        .sidebar-head { padding: 18px 16px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #2a271f; }
-        .sidebar-head .brand { font-family: 'Oswald','Arial Narrow',sans-serif; text-transform: uppercase;
-          letter-spacing: 0.08em; font-weight: 600; font-size: 15px; color: var(--amber); flex: 1; }
-        .lang-switch { display: flex; border: 1px solid #3a362c; border-radius: 3px; overflow: hidden; }
-        .lang-switch button { background: transparent; border: none; color: var(--ink-dim); font-size: 10px;
-          font-weight: 700; padding: 3px 6px; cursor: pointer; }
-        .lang-switch button.on { background: var(--amber); color: #1a1408; }
-        .new-btn { margin: 12px 14px; background: var(--amber); color: #1a1408; border: none; border-radius: 3px;
-          padding: 9px 10px; font-weight: 700; font-size: 12.5px; letter-spacing: 0.04em; text-transform: uppercase;
-          display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
-        .new-btn:hover { background: #ffb75c; }
-        .song-list { overflow-y: auto; flex: 1; padding: 4px 8px 16px; }
-        .song-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 9px 10px;
-          border-radius: 3px; cursor: pointer; color: var(--ink-dim); margin-bottom: 2px; }
-        .song-item:hover { background: #24211a; color: var(--ink); }
-        .song-item.active { background: #2a2419; color: var(--ink); box-shadow: inset 2px 0 0 var(--amber); }
-        .song-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-        .song-item .del { opacity: 0; background: none; border: none; color: var(--ink-dim); cursor: pointer; padding: 2px; }
-        .song-item:hover .del { opacity: 1; }
-        .song-item .del:hover { color: var(--red); }
-        .empty-list { padding: 24px 14px; color: var(--ink-dim); font-size: 12.5px; line-height: 1.5; }
-        .sidebar-footer { padding: 10px; border-top: 1px solid #2a271f; display: flex; gap: 6px; }
-        .footer-btn { flex: 1; background: transparent; border: 1px solid #3a362c; color: var(--ink-dim); border-radius: 3px;
-          padding: 7px 4px; font-size: 10.5px; font-weight: 700; cursor: pointer; display: flex; align-items: center;
-          justify-content: center; gap: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
-        .footer-btn:hover { border-color: var(--amber); color: var(--amber); }
-
-        .main { flex: 1; padding: 32px 40px 90px; overflow-y: auto; height: 100vh; }
-        .no-song { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 70vh;
-          color: var(--ink-dim); gap: 10px; }
-        .no-song svg { opacity: 0.4; }
-
-        .chart-card { background: var(--paper); color: #1a170f; max-width: 980px; margin: 0 auto; border-radius: 4px;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.45); overflow: hidden; }
-        .chart-header { padding: 22px 26px 18px; border-bottom: 2.5px solid #1a170f; display: flex;
-          justify-content: space-between; align-items: flex-end; gap: 20px; }
-        .title-input { font-family: 'Oswald','Arial Narrow',sans-serif; font-size: 28px; font-weight: 700;
-          text-transform: uppercase; background: transparent; border: none; width: 100%; color: #1a170f; }
-        .title-input:focus { outline: none; border-bottom: 1px dashed #1a170f; }
-        .artist-input { background: transparent; border: none; font-size: 13px; color: #5c5745; margin-top: 2px; width: 100%; }
-        .artist-input:focus { outline: none; border-bottom: 1px dashed #999; }
-        .artist-input::placeholder, .title-input::placeholder { color: #a49d89; }
-        .readout { font-family: 'JetBrains Mono','Roboto Mono',monospace; background: #1a1712; color: var(--amber);
-          border-radius: 4px; padding: 8px 14px; text-align: center; min-width: 88px; }
-        .ts-readout { min-width: 70px; }
-        .ts-readout input { font-size: 20px !important; }
-        .readout input { background: transparent; border: none; color: var(--amber); font-family: inherit;
-          font-size: 24px; font-weight: 700; width: 100%; text-align: center; }
-        .readout input:focus { outline: none; }
-        .readout .lbl { font-size: 9px; letter-spacing: 0.15em; color: #d69a4e; margin-top: 2px; text-transform: uppercase; }
-
-        .groove-row { padding: 10px 26px; border-bottom: 1px solid var(--paper-line); display: flex; align-items: center;
-          gap: 10px; background: #ebe4d3; }
-        .groove-row label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #6b6555; font-weight: 800; }
-        .groove-row input { background: transparent; border: none; font-size: 13.5px; font-style: italic; color: #221f19;
-          flex: 1; font-weight: 700; }
-        .groove-row input:focus { outline: none; }
-        .groove-row .total { font-family: 'JetBrains Mono',monospace; font-size: 11.5px; color: #6b6555; white-space: nowrap; }
-
-        .presets-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 26px 4px; }
-        .preset-chip { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid var(--paper-line);
-          background: transparent; color: #4a4636; padding: 4px 9px; border-radius: 20px; cursor: pointer; font-weight: 700; }
-        .preset-chip:hover { background: #1a170f; color: var(--paper); border-color: #1a170f; }
-        .break-chip { border-color: var(--amber-dim); color: var(--amber-dim); }
-
-        .hint { padding: 4px 26px 0; font-size: 11px; color: #8a8267; }
-
-        /* grid staff */
-        .staff-grid { display: grid; gap: 0; padding: 18px 22px 8px; overflow-x: auto; }
-        .row-spacer { grid-column: 1 / -1; height: 16px; position: relative; }
-        .row-spacer::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1.5px dashed #c9c2ac; }
-
-        .cell { border-left: 2.5px solid #1a170f; position: relative; display: flex; flex-direction: column; min-width: 0; }
-        .cell.empty-cell { border-left: 1px dashed #d8d0bd; }
-        .cell:nth-last-child(-n+50) { }
-        .cell-inner { padding: 10px 10px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; min-width: 0; width: 100%; }
-        .c-technique { text-align: center; font-size: 11px; font-style: italic; font-weight: 700; color: #3a3629;
-          background: rgba(26,23,15,0.06); border-radius: 3px; width: 92%; padding: 1px 0; margin-bottom: 1px; cursor: text;
-          min-height: 1.2em; }
-        .c-technique:focus { outline: none; background: rgba(26,23,15,0.1); }
-        .c-technique:empty:before { content: attr(data-placeholder); color: #a49d89; font-weight: 600; font-style: italic; }
-        .c-name { text-align: center; font-family: 'Oswald','Arial Narrow',sans-serif; font-weight: 800; font-size: 16.5px;
-          text-transform: uppercase; width: 100%; color: #1a170f; letter-spacing: 0.01em; cursor: text; min-height: 1.2em; }
-        .c-name:focus { outline: none; }
-        .c-name:empty:before { content: attr(data-placeholder); color: #a49d89; font-weight: 700; }
-        .c-bracket { text-align: center; color: #6b6555; font-size: 13px; line-height: 0.5; margin: 2px 0; }
-        .c-repeat-wrap { position: relative; width: 100%; }
-        .c-repeat { position: relative; z-index: 1; text-align: center; font-family: 'JetBrains Mono',monospace;
-          font-size: 13.5px; width: 100%; color: #1a170f; font-weight: 800; white-space: pre-wrap; word-break: break-word;
-          min-height: 1.3em; cursor: text; }
-        .c-repeat:focus, .range-note:focus { outline: none; }
-        .c-repeat:empty:before, .range-note:empty:before { content: attr(data-placeholder); color: #a49d89; font-weight: 600; }
-        .c-bars-row { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; }
-        .c-bars { width: 30px; font-family: 'JetBrains Mono',monospace; font-size: 10.5px; text-align: center;
-          background: #f7f2e6; border: 1px solid var(--paper-line); border-radius: 2px; color: #6b6555; }
-        .c-bars-row span { font-size: 9px; color: #8a8267; text-transform: uppercase; }
-
-        .c-add-rhythm { margin-top: 6px; background: transparent; border: 1px dashed var(--paper-line); color: #8a8267;
-          font-size: 9.5px; text-transform: uppercase; font-weight: 700; border-radius: 3px; padding: 3px 7px; cursor: pointer;
-          display: flex; align-items: center; gap: 3px; }
-        .c-add-rhythm:hover { border-color: #1a170f; color: #1a170f; }
-        .cell-rhythm { margin-top: 6px; background: #ece5d4; border: 1px solid var(--paper-line); border-radius: 3px;
-          padding: 3px 4px 2px; width: 100%; max-width: 100%; min-width: 0; }
-        .cell-rhythm-range { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 2px; }
-        .range-label { font-family: 'JetBrains Mono',monospace; font-size: 9px; font-weight: 800; color: var(--amber-dim);
-          background: rgba(138,92,30,0.12); border-radius: 2px; padding: 1px 4px; white-space: nowrap; }
-        .range-align { font-size: 8px; text-transform: uppercase; font-weight: 700; color: #8a8267; background: none;
-          border: none; cursor: pointer; text-decoration: underline; padding: 0; white-space: nowrap; }
-        .range-align:hover { color: #1a170f; }
-        .range-note { width: 100%; margin-top: 3px; font-size: 9.5px; font-style: italic; color: #4a4636;
-          border-top: 1px dashed var(--paper-line); padding-top: 2px; cursor: text; min-height: 1.2em; }
-        .range-note-view { width: 100%; margin-top: 3px; font-size: 9.5px; font-style: italic; color: #4a4636;
-          border-top: 1px dashed var(--paper-line); padding-top: 2px; }
-        .rhythm-done { font-size: 8px; text-transform: uppercase; font-weight: 700; color: #8a8267; background: none;
-          border: none; cursor: pointer; text-decoration: underline; padding: 0; white-space: nowrap; }
-        .rhythm-done:hover { color: #1a170f; }
-        .cell-rhythm-note-picker { display: flex; gap: 2px; margin-bottom: 2px; min-width: 0; }
-        .cell-rhythm-note-picker button { flex: 1; font-size: 8px; padding: 1px 0; border: 1px solid var(--paper-line);
-          background: transparent; color: #8a8267; border-radius: 2px; cursor: pointer; font-weight: 700; min-width: 0; }
-        .cell-rhythm-note-picker button.on { background: var(--amber-dim); color: #fff2dc; border-color: var(--amber-dim); }
-        .cell-rhythm-scroll { overflow-x: auto; width: 100%; max-width: 100%; min-width: 0; }
-        .cell-rhythm-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 8px; margin-top: 3px; }
-        .cell-rhythm-bar-right { display: flex; gap: 4px; margin-left: auto; }
-        .cell-rhythm-bar button { background: none; border: none; color: #a49d89; cursor: pointer; padding: 1px; }
-        .cell-rhythm-bar button:hover { color: #1a170f; }
-        .cell-beat-stepper { display: flex; align-items: center; gap: 3px; font-size: 8px; color: #8a8267; font-weight: 700;
-          text-transform: uppercase; }
-        .cell-beat-stepper b { font-size: 10px; color: #4a4636; min-width: 9px; text-align: center; }
-        .cell-beat-stepper button { width: 13px; height: 13px; line-height: 11px; border: 1px solid var(--paper-line);
-          background: transparent; border-radius: 2px; cursor: pointer; font-size: 10px; padding: 0; color: #6b6555; }
-        .cell-beat-stepper button:hover { border-color: #1a170f; color: #1a170f; }
-
-        .cell-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 6px;
-          opacity: 0; transition: opacity 0.1s; border-top: 1px solid #e4dcc7; margin-top: auto; }
-        .cell:hover .cell-toolbar { opacity: 1; }
-        .swatches { display: flex; gap: 3px; align-items: center; }
-        .swatch { width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.25); cursor: pointer; padding: 0; }
-        .swatch.eraser { width: 12px; height: 12px; border-radius: 50%; background: #fff; display: flex; align-items: center;
-          justify-content: center; color: #a49d89; border: 1px solid var(--paper-line); }
-        .swatch.eraser:hover { color: var(--red); border-color: var(--red); }
-        .cell-del { background: none; border: none; cursor: pointer; color: #a49d89; padding: 2px; }
-        .cell-del:hover { color: var(--red); }
-
-        .add-row { display: flex; gap: 8px; padding: 8px 26px 20px; }
-        .add-section { border: 1.5px dashed var(--paper-line); background: transparent; color: #4a4636; padding: 8px 12px;
-          border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700; text-transform: uppercase;
-          letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
-        .add-section:hover { border-color: #1a170f; color: #1a170f; }
-
-        .rhythm-block { border-top: 2.5px solid #1a170f; padding: 16px 26px 22px; background: #ece5d4; }
-        .rhythm-block h3 { font-family: 'Oswald','Arial Narrow',sans-serif; text-transform: uppercase; font-size: 13px;
-          letter-spacing: 0.08em; color: #4a4636; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; font-weight: 800; }
-        .rhythm-block .sub { font-size: 11px; color: #8a8267; margin: 0 0 10px; }
-        .rhythm-card { background: var(--paper); border: 1px solid var(--paper-line); border-radius: 4px; padding: 10px 14px; margin-bottom: 10px; }
-        .rhythm-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
-        .rhythm-label { flex: 1; min-width: 120px; background: transparent; border: none; border-bottom: 1px dashed transparent;
-          font-weight: 800; font-size: 12.5px; text-transform: uppercase; color: #1a170f; }
-        .rhythm-label:focus { outline: none; border-bottom-color: #999; }
-        .rhythm-label::placeholder { color: #b3ac98; }
-        .seg-toggle { display: flex; border: 1px solid var(--paper-line); border-radius: 3px; overflow: hidden; }
-        .seg-toggle button { background: transparent; border: none; padding: 3px 8px; font-size: 10.5px; cursor: pointer; color: #6b6555; font-weight: 700; }
-        .seg-toggle button.on { background: var(--amber-dim); color: #fff2dc; }
-        .beat-stepper { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #6b6555; }
-        .beat-stepper button { width: 18px; height: 18px; border: 1px solid var(--paper-line); background: transparent; border-radius: 2px; cursor: pointer; }
-        .rhythm-del { background: none; border: none; color: #a49d89; cursor: pointer; }
-        .rhythm-del:hover { color: var(--red); }
-        .rhythm-hint { font-size: 10px; color: #a49d89; margin-top: 2px; }
-        .add-rhythm { border: 1.5px dashed var(--paper-line); background: transparent; color: #4a4636; padding: 8px 12px;
-          border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700; text-transform: uppercase;
-          letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
-        .add-rhythm:hover { border-color: #1a170f; color: #1a170f; }
-
-        .toolbar { max-width: 980px; margin: 0 auto 14px; display: flex; justify-content: space-between; align-items: center; }
-        .toolbar .status { font-size: 11.5px; color: var(--ink-dim); display: flex; align-items: center; gap: 6px; }
-        .toolbar-right { display: flex; align-items: center; gap: 8px; }
-        .icon-btn { background: transparent; border: 1px solid #3a362c; color: var(--ink); width: 32px; height: 32px;
-          border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .icon-btn:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
-        .icon-btn:disabled { opacity: 0.3; cursor: default; }
-        .print-btn { background: transparent; border: 1px solid #3a362c; color: var(--ink); padding: 8px 14px;
-          border-radius: 3px; cursor: pointer; font-size: 12.5px; display: flex; align-items: center; gap: 6px; font-weight: 600; }
-        .print-btn:hover { border-color: var(--amber); color: var(--amber); }
-
-        @media print {
-          .sidebar, .toolbar, .presets-row, .add-row, .cell-toolbar, .add-rhythm, .hint, .c-add-rhythm { display: none !important; }
-          .chart-app { background: white; }
-          .main { padding: 0; }
-          .chart-card { box-shadow: none; max-width: 100%; }
-        }
-      `}</style>
-
-      <aside className="sidebar">
+      <div className={"sidebar-backdrop" + (mobileNavOpen ? " show" : "")} onClick={() => setMobileNavOpen(false)} />
+      <aside className={"sidebar" + (mobileNavOpen ? " open" : "")}>
         <div className="sidebar-head">
-          <Music size={18} color="#f2a33c" /><span className="brand">{t("brand")}</span>
+          <RoadchartMark size={18} /><span className="brand">{t("brand")}</span>
+          <button className="sidebar-close" onClick={() => setMobileNavOpen(false)}><X size={18} /></button>
           <div className="lang-switch">
             <button className={lang === "tr" ? "on" : ""} onClick={() => changeLang("tr")}>TR</button>
             <button className={lang === "en" ? "on" : ""} onClick={() => changeLang("en")}>EN</button>
           </div>
         </div>
-        <button className="new-btn" onClick={addSong}><Plus size={14} /> {t("newSong")}</button>
+        <button className="new-btn" onClick={() => { addSong(); setMobileNavOpen(false); }}><Plus size={14} /> {t("newSong")}</button>
         <div className="song-list">
           {songs.length === 0 && <div className="empty-list">{t("emptySongList")}</div>}
           {songs.map((s) => (
-            <div key={s.id} className={"song-item" + (s.id === activeId ? " active" : "")} onClick={() => setActiveId(s.id)}>
+            <div key={s.id} className={"song-item" + (s.id === activeId ? " active" : "")}
+              onClick={() => { setActiveId(s.id); setMobileNavOpen(false); }}>
               <span className="name">{s.title || t("untitledSong")}</span>
               <button className="del" onClick={(e) => { e.stopPropagation(); deleteSong(s.id, s.title); }} title={t("deleteTooltip")}><X size={13} /></button>
             </div>
@@ -1095,8 +1341,12 @@ export default function App() {
       </aside>
 
       <main className="main">
+        <button className="mobile-menu-btn" onClick={() => setMobileNavOpen(true)}>
+          <Menu size={18} /> {activeSong ? (activeSong.title || t("untitledSong")) : t("brand")}
+        </button>
+
         {!activeSong && (
-          <div className="no-song"><ListMusic size={40} /><div>{t("noSongSelected")}</div></div>
+          <div className="no-song"><RoadchartMark size={44} pinColor="#a7a49a" noteColor="#14130f" /><div>{t("noSongSelected")}</div></div>
         )}
 
         {activeSong && (
@@ -1108,9 +1358,35 @@ export default function App() {
               <div className="toolbar-right">
                 <button className="icon-btn" onClick={undo} disabled={historyIndex <= 0} title={t("undoTooltip")}><Undo2 size={14} /></button>
                 <button className="icon-btn" onClick={redo} disabled={historyIndex >= history.length - 1} title={t("redoTooltip")}><Redo2 size={14} /></button>
+                {BACKEND_ON && (
+                  <button className="icon-btn" onClick={() => setShareOpen((v) => !v)} title={t("shareBtn")}><Share2 size={14} /></button>
+                )}
                 <button className="print-btn" onClick={() => window.print()}><Printer size={14} /> {t("printPdf")}</button>
               </div>
             </div>
+
+            {shareOpen && BACKEND_ON && (
+              <div className="share-panel">
+                <label className="share-toggle">
+                  <input type="checkbox" checked={!!activeSong.isPublic}
+                    onChange={(e) => updateSong(activeSong.id, { isPublic: e.target.checked })} />
+                  {activeSong.isPublic ? t("shareOnLabel") : t("shareOffLabel")}
+                </label>
+                {activeSong.isPublic && (
+                  <div className="share-link-row">
+                    <input readOnly className="share-link-input"
+                      value={`${window.location.origin}${window.location.pathname}?share=${activeSong.id}`} />
+                    <button className="share-copy-btn" onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?share=${activeSong.id}`);
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 1800);
+                    }}>
+                      {linkCopied ? <Check size={13} /> : <Copy size={13} />} {linkCopied ? t("shareCopied") : t("shareCopy")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="chart-card">
               <div className="chart-header">
@@ -1151,12 +1427,25 @@ export default function App() {
                   <CornerDownLeft size={11} style={{ marginRight: 3, verticalAlign: -1 }} /> {t("lineBreak")}
                 </button>
               </div>
+              <div className="presets-row">
+                {NAV_PRESETS.map((p) => (
+                  <button key={p} className="preset-chip nav-chip"
+                    onClick={() => setSections(activeSong.id, (arr) => [...arr, emptyNav(p)])}>𝄋 {p}</button>
+                ))}
+              </div>
               <div className="hint">{t("gridHint")}</div>
 
               <div className="staff-grid" style={{ gridTemplateColumns: `repeat(${Math.max(grid.columns.length, 1)}, minmax(120px, 1fr))` }}>
                 {grid.rows.map((row, ri) =>
                   row.type === "spacer" ? (
                     <div className="row-spacer" key={row.id} />
+                  ) : row.type === "nav" ? (
+                    <div className="nav-marker" key={row.id}>
+                      {row.label}
+                      <button className="nav-marker-del" onClick={() => setSections(activeSong.id, (arr) => arr.filter((x) => x.id !== row.id))}>
+                        <X size={11} />
+                      </button>
+                    </div>
                   ) : (
                     row.cells.map((sec, ci) =>
                       sec ? (
@@ -1227,4 +1516,12 @@ export default function App() {
       </main>
     </div>
   );
+}
+
+export default function Root() {
+  const shareId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("share") : null;
+  const shareLang = (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("en")) ? "en" : "tr";
+  const shareT = (key) => (TRANSLATIONS[shareLang] && TRANSLATIONS[shareLang][key]) || TRANSLATIONS.en[key] || key;
+  if (shareId) return <SharedView shareId={shareId} t={shareT} />;
+  return <App />;
 }
